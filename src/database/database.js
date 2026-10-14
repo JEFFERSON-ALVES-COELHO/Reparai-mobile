@@ -1,3 +1,4 @@
+
 import * as SQLite from 'expo-sqlite';
 
 export const db = SQLite.openDatabaseSync('reparai.db');
@@ -9,6 +10,16 @@ export function initDatabase() {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ocorrencias (
+      id TEXT PRIMARY KEY NOT NULL,
+      categoria TEXT NOT NULL,
+      titulo TEXT NOT NULL,
+      descricao TEXT NOT NULL,
+      endereco TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Enviada',
+      data TEXT NOT NULL
     );
   `);
 
@@ -24,4 +35,36 @@ export function initDatabase() {
       ['Aluno Teste', 'aluno@senac.com', '1234']
     );
   }
+}
+
+export function salvarOcorrencia(ocorrencia) {
+  db.runSync(
+    `INSERT INTO ocorrencias
+      (id, categoria, titulo, descricao, endereco, status, data)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      ocorrencia.id,
+      ocorrencia.categoria,
+      ocorrencia.titulo,
+      ocorrencia.descricao,
+      ocorrencia.endereco,
+      ocorrencia.status ?? 'Enviada',
+      ocorrencia.data,
+    ]
+  );
+}
+
+export function listarOcorrencias() {
+  return db.getAllSync(
+    'SELECT * FROM ocorrencias ORDER BY data DESC'
+  );
+}
+
+export function atualizarStatus(id, status) {
+  const resultado = db.runSync(
+    'UPDATE ocorrencias SET status = ? WHERE id = ?',
+    [status, id]
+  );
+
+  return resultado.changes;
 }
