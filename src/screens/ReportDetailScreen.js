@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 import {
     View,
@@ -8,9 +8,33 @@ import {
     TouchableOpacity,
     ScrollView,
     Alert,
+    Image,
+    ActivityIndicator,
 } from 'react-native';
 
-import { atualizarStatus } from '../database/database';
+import {
+    atualizarStatus,
+    excluirOcorrencia,
+} from '../database/database';
+
+import {
+    obterFoto,
+    excluirFoto,
+} from '../database/fotos';
+
+const STATUS = [
+    'Enviada',
+    'Em análise',
+    'Em execução',
+    'Resolvida',
+];
+
+const CORES_STATUS = {
+    'Enviada': '#1976D2',
+    'Em análise': '#EF6C00',
+    'Em execução': '#F9A825',
+    'Resolvida': '#2E7D32',
+};
 
 export default function ReportDetailScreen({ navigation, route }) {
     const ocorrencia = route.params?.ocorrencia;
@@ -19,61 +43,200 @@ export default function ReportDetailScreen({ navigation, route }) {
         ocorrencia?.status || 'Enviada'
     );
 
-    function alterarStatus(novoStatus) {
-        if (!ocorrencia?.id) {
-            Alert.alert(
-                'Erro',
-                'Não foi possível identificar a ocorrência.'
-            );
+    const [fotoUri, setFotoUri] = useState(null);
+    const [carregandoFoto, setCarregandoFoto] = useState(true);
+    const [atualizandoStatus, setAtualizandoStatus] = useState(false);
+    const [excluindo, setExcluindo] = useState(false);
+    const [voltando, setVoltando] = useState(false);
+
+    useEffect(() => {
+        setStatusAtual(ocorrencia?.status || 'Enviada');
+    }, [ocorrencia?.id, ocorrencia?.status]);
+
+    useEffect(() => {
+        let ativo = true;
+
+        async function carregarFoto() {
+            setCarregandoFoto(true);
+
+            try {
+                const caminho = await obterFoto(ocorrencia?.id);
+
+                if (ativo) {
+                    setFotoUri(caminho);
+                }
+            } catch (erro) {
+                console.error('Erro ao carregar foto:', erro);
+
+                if (ativo) {
+                    setFotoUri(null);
+                }
+            } finally {
+                if (ativo) {
+                    setCarregandoFoto(false);
+                }
+            }
+        }
+
+        carregarFoto();
+
+        return () => {
+            ativo = false;
+        };
+    }, [ocorrencia?.id]);
+
+    function voltar() {
+        if (voltando || !navigation.canGoBack()) {
             return;
         }
 
-        if (novoStatus === statusAtual) {
+        setVoltando(true);
+        navigation.goBack();
+    }
+
+    function alterarStatus(novoStatus) {
+        if (!ocorrencia?.id || atualizandoStatus || excluindo) {
             return;
         }
 
         try {
-            const alterados = atualizarStatus(
+            setAtualizandoStatus(true);
+
+            const alteracoes = atualizarStatus(
                 ocorrencia.id,
                 novoStatus
             );
 
-            if (alterados > 0) {
-                setStatusAtual(novoStatus);
-
+            if (alteracoes === 0) {
                 Alert.alert(
-                    'Sucesso',
-                    `Status atualizado para "${novoStatus}".`
+                    'Atenção',
+                    'Não foi possível atualizar o status da ocorrência.'
                 );
-            } else {
-                Alert.alert(
-                    'Aviso',
-                    'Nenhuma ocorrência foi atualizada. Verifique o registro no banco de dados.'
-                );
+                return;
             }
-        } catch (error) {
-            console.error('Erro ao atualizar status:', error);
+
+            setStatusAtual(novoStatus);
+
+            Alert.alert(
+                'Sucesso',
+                'Status atualizado com sucesso.'
+            );
+        } catch (erro) {
+            console.error('Erro ao atualizar status:', erro);
 
             Alert.alert(
                 'Erro',
-                'Não foi possível salvar o novo status.'
+                'Não foi possível atualizar o status.'
             );
+        } finally {
+            setAtualizandoStatus(false);
+        }
+    }
+
+    function abrirEdicao() {
+        if (!ocorrencia?.id || excluindo) {
+            return;
+        }
+
+        navigation.navigate('EditReport', {
+            ocorrencia: {
+                ...ocorrencia,
+                status: statusAtual,
+            },
+        });
+    }
+
+    function solicitarExclusao() {
+        if (!ocorrencia?.id || excluindo) {
+            return;
+        }
+
+        Alert.alert(
+            'Excluir ocorrência',
+            'Tem certeza de que deseja excluir esta ocorrência? Essa ação não poderá ser desfeita.',
+            [
+                {
+                    text: 'Cancelar',
+                    style: 'cancel',
+                },
+                {
+                    text: 'Excluir',
+                    style: 'destructive',
+                    onPress: confirmarExclusao,
+                },
+            ]
+        );
+    }
+
+    async function confirmarExclusao() {
+        if (excluindo) {
+            return;
+        }
+
+        setExcluindo(true);
+
+        try {
+            const removidas = excluirOcorrencia(ocorrencia.id);
+
+            if (removidas === 0) {
+                Alert.alert(
+                    'Atenção',
+                    'A ocorrência não foi encontrada ou já foi excluída.'
+                );
+                return;
+            }
+
+            let fotoRemovida = true;
+
+            try {
+                await excluirFoto(ocorrencia.id);
+            } catch (erroFoto) {
+                fotoRemovida = false;
+
+                console.error(
+                    'Erro ao remover a foto:',
+                    erroFoto
+                );
+            }
+
+            Alert.alert(
+                'Ocorrência excluída',
+                fotoRemovida
+                    ? 'A ocorrência foi excluída com sucesso.'
+                    : 'A ocorrência foi excluída, mas não foi possível remover o arquivo da foto.',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => navigation.goBack(),
+                    },
+                ]
+            );
+        } catch (erro) {
+            console.error('Erro ao excluir ocorrência:', erro);
+
+            Alert.alert(
+                'Erro',
+                'Não foi possível excluir a ocorrência. Tente novamente.'
+            );
+        } finally {
+            setExcluindo(false);
         }
     }
 
     if (!ocorrencia) {
         return (
-            <View style={styles.container}>
-                <Text style={styles.title}>
-                    Ocorrência não encontrada
+            <View style={styles.centralizado}>
+                <Text style={styles.titulo}>
+                    Ocorrência não encontrada.
                 </Text>
 
                 <TouchableOpacity
-                    style={styles.button}
-                    onPress={() => navigation.goBack()}
+                    style={styles.botaoVoltar}
+                    activeOpacity={0.7}
+                    onPress={voltar}
                 >
-                    <Text style={styles.buttonText}>
-                        Voltar
+                    <Text style={styles.textoBotaoVoltar}>
+                        ← Voltar
                     </Text>
                 </TouchableOpacity>
             </View>
@@ -82,184 +245,155 @@ export default function ReportDetailScreen({ navigation, route }) {
 
     const dataFormatada = ocorrencia.data
         ? new Date(ocorrencia.data).toLocaleString('pt-BR')
-        : 'Data não informada';
-
-    const statusDisponiveis = [
-        'Enviada',
-        'Em análise',
-        'Em execução',
-        'Resolvida',
-    ];
-
-    function obterCorStatus(status) {
-        switch (status) {
-            case 'Resolvida':
-                return {
-                    fundo: '#E8F5E9',
-                    texto: '#2E7D32',
-                };
-
-            case 'Em execução':
-                return {
-                    fundo: '#FFF3E0',
-                    texto: '#E65100',
-                };
-
-            case 'Em análise':
-                return {
-                    fundo: '#FFF8E1',
-                    texto: '#8D6E00',
-                };
-
-            default:
-                return {
-                    fundo: '#E3F2FD',
-                    texto: '#1565C0',
-                };
-        }
-    }
-
-    const coresStatus = obterCorStatus(statusAtual);
+        : 'Não informada';
 
     return (
         <ScrollView
             style={styles.container}
-            contentContainerStyle={styles.content}
-            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.conteudo}
             keyboardShouldPersistTaps="handled"
         >
-            <View style={styles.header}>
-                <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    style={styles.backButton}
-                    activeOpacity={0.7}
-                >
-                    <Text style={styles.backText}>
-                        ‹ Voltar
-                    </Text>
-                </TouchableOpacity>
+            <TouchableOpacity
+                style={styles.botaoVoltar}
+                activeOpacity={0.7}
+                onPress={voltar}
+                disabled={voltando}
+            >
+                <Text style={styles.textoBotaoVoltar}>
+                    ← Voltar para ocorrências
+                </Text>
+            </TouchableOpacity>
 
-                <Text style={styles.headerTitle}>
-                    Detalhes da ocorrência
+            <Text style={styles.titulo}>
+                Detalhes da ocorrência
+            </Text>
+
+            <View style={styles.cartao}>
+                <Text style={styles.label}>Título</Text>
+                <Text style={styles.valor}>
+                    {ocorrencia.titulo || 'Não informado'}
                 </Text>
 
-                <Text style={styles.subtitle}>
-                    Acompanhe as informações do registro
-                </Text>
-            </View>
-
-            <View style={styles.card}>
-                <Text style={styles.label}>
-                    Título
-                </Text>
-
-                <Text style={styles.reportTitle}>
-                    {ocorrencia.titulo || 'Sem título'}
-                </Text>
-
-                <Text style={styles.label}>
-                    Categoria
-                </Text>
-
-                <Text style={styles.value}>
+                <Text style={styles.label}>Categoria</Text>
+                <Text style={styles.valor}>
                     {ocorrencia.categoria || 'Não informada'}
                 </Text>
 
-                <Text style={styles.label}>
-                    Descrição do problema
+                <Text style={styles.label}>Descrição</Text>
+                <Text style={styles.valor}>
+                    {ocorrencia.descricao || 'Não informada'}
                 </Text>
 
-                <Text style={styles.value}>
-                    {ocorrencia.descricao || 'Sem descrição'}
+                <Text style={styles.label}>Endereço</Text>
+                <Text style={styles.valor}>
+                    {ocorrencia.endereco || 'Não informado'}
                 </Text>
 
-                <Text style={styles.label}>
-                    Endereço
-                </Text>
-
-                <Text style={styles.value}>
-                    📍 {ocorrencia.endereco || 'Não informado'}
-                </Text>
-
-                <Text style={styles.label}>
-                    Data do registro
-                </Text>
-
-                <Text style={styles.value}>
+                <Text style={styles.label}>Data de cadastro</Text>
+                <Text style={styles.valor}>
                     {dataFormatada}
                 </Text>
 
                 <Text style={styles.label}>
-                    Status atual
+                    Foto da ocorrência
                 </Text>
+
+                {carregandoFoto ? (
+                    <ActivityIndicator
+                        size="large"
+                        color="#1976D2"
+                        style={styles.carregando}
+                    />
+                ) : fotoUri ? (
+                    <Image
+                        source={{ uri: fotoUri }}
+                        style={styles.foto}
+                        resizeMode="contain"
+                    />
+                ) : (
+                    <Text style={styles.semFoto}>
+                        Nenhuma foto encontrada.
+                    </Text>
+                )}
+
+                <Text style={styles.label}>Status atual</Text>
 
                 <View
                     style={[
-                        styles.statusBadge,
-                        { backgroundColor: coresStatus.fundo },
+                        styles.statusAtual,
+                        {
+                            backgroundColor:
+                                CORES_STATUS[statusAtual] || '#1976D2',
+                        },
                     ]}
                 >
-                    <Text
-                        style={[
-                            styles.statusText,
-                            { color: coresStatus.texto },
-                        ]}
-                    >
+                    <Text style={styles.textoStatusAtual}>
                         {statusAtual}
                     </Text>
                 </View>
 
-                <Text style={styles.notice}>
-                    O status exibido corresponde ao último estado
-                    salvo para esta ocorrência.
-                </Text>
-
-                <View style={styles.divider} />
-
-                <Text style={styles.sectionTitle}>
+                <Text style={styles.label}>
                     Atualizar status
                 </Text>
 
-                <Text style={styles.instruction}>
-                    Selecione um status para atualizar o registro.
-                </Text>
-
-                {statusDisponiveis.map((status) => {
-                    const selecionado = status === statusAtual;
-
-                    return (
-                        <TouchableOpacity
-                            key={status}
+                {STATUS.map((status) => (
+                    <TouchableOpacity
+                        key={status}
+                        style={[
+                            styles.opcaoStatus,
+                            statusAtual === status &&
+                            styles.opcaoStatusSelecionada,
+                            atualizandoStatus &&
+                            styles.botaoDesabilitado,
+                        ]}
+                        onPress={() => alterarStatus(status)}
+                        disabled={
+                            atualizandoStatus ||
+                            excluindo ||
+                            statusAtual === status
+                        }
+                    >
+                        <Text
                             style={[
-                                styles.statusOption,
-                                selecionado && styles.statusOptionSelected,
+                                styles.textoOpcaoStatus,
+                                statusAtual === status &&
+                                styles.textoOpcaoSelecionada,
                             ]}
-                            onPress={() => alterarStatus(status)}
-                            activeOpacity={0.8}
                         >
-                            <Text
-                                style={[
-                                    styles.statusOptionText,
-                                    selecionado &&
-                                    styles.statusOptionTextSelected,
-                                ]}
-                            >
-                                {selecionado ? '✓  ' : '○  '}
-                                {status}
-                            </Text>
-                        </TouchableOpacity>
-                    );
-                })}
+                            {statusAtual === status ? '✓ ' : ''}
+                            {status}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
             </View>
 
             <TouchableOpacity
-                style={styles.button}
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.8}
+                style={styles.botaoEditar}
+                activeOpacity={0.7}
+                onPress={abrirEdicao}
+                disabled={excluindo}
             >
-                <Text style={styles.buttonText}>
-                    Voltar para minhas ocorrências
+                <Text style={styles.textoBotao}>
+                    ✎ Editar ocorrência
                 </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={[
+                    styles.botaoExcluir,
+                    excluindo && styles.botaoDesabilitado,
+                ]}
+                activeOpacity={0.7}
+                onPress={solicitarExclusao}
+                disabled={excluindo}
+            >
+                {excluindo ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                    <Text style={styles.textoBotao}>
+                        Excluir ocorrência
+                    </Text>
+                )}
             </TouchableOpacity>
         </ScrollView>
     );
@@ -268,159 +402,127 @@ export default function ReportDetailScreen({ navigation, route }) {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F5F7FA',
+        backgroundColor: '#F4F6F8',
     },
-
-    content: {
-        paddingBottom: 60,
-        flexGrow: 1,
-    },
-
-    header: {
-        backgroundColor: '#1976D2',
-        paddingHorizontal: 22,
-        paddingTop: 45,
-        paddingBottom: 28,
-    },
-
-    backButton: {
-        alignSelf: 'flex-start',
-        paddingVertical: 8,
-        marginBottom: 12,
-    },
-
-    backText: {
-        color: '#FFFFFF',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-
-    headerTitle: {
-        color: '#FFFFFF',
-        fontSize: 26,
-        fontWeight: 'bold',
-    },
-
-    subtitle: {
-        color: '#E3F2FD',
-        fontSize: 14,
-        marginTop: 8,
-    },
-
-    card: {
-        backgroundColor: '#FFFFFF',
-        margin: 16,
+    conteudo: {
         padding: 20,
-        borderRadius: 16,
-        elevation: 3,
+        paddingBottom: 40,
     },
-
-    label: {
-        color: '#777777',
-        fontSize: 13,
-        fontWeight: '600',
-        marginTop: 20,
-        marginBottom: 7,
+    centralizado: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+        backgroundColor: '#F4F6F8',
     },
-
-    reportTitle: {
-        color: '#222222',
-        fontSize: 22,
-        fontWeight: 'bold',
-    },
-
-    value: {
-        color: '#333333',
-        fontSize: 16,
-        lineHeight: 24,
-    },
-
-    statusBadge: {
-        alignSelf: 'flex-start',
-        paddingHorizontal: 14,
-        paddingVertical: 9,
+    botaoVoltar: {
+        width: '100%',
+        minHeight: 56,
+        backgroundColor: '#1976D2',
+        paddingVertical: 16,
+        paddingHorizontal: 20,
         borderRadius: 10,
+        marginBottom: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 2,
     },
-
-    statusText: {
+    textoBotaoVoltar: {
+        color: '#FFFFFF',
+        fontSize: 17,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
+    titulo: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#1976D2',
+        marginBottom: 20,
+    },
+    cartao: {
+        backgroundColor: '#FFFFFF',
+        padding: 18,
+        borderRadius: 12,
+        marginBottom: 20,
+        elevation: 2,
+    },
+    label: {
         fontSize: 14,
         fontWeight: 'bold',
+        color: '#666666',
+        marginTop: 16,
+        marginBottom: 6,
     },
-
-    notice: {
-        color: '#777777',
-        fontSize: 12,
-        lineHeight: 18,
-        marginTop: 18,
-    },
-
-    divider: {
-        height: 1,
-        backgroundColor: '#E5E7EB',
-        marginTop: 24,
-    },
-
-    sectionTitle: {
+    valor: {
+        fontSize: 16,
         color: '#222222',
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginTop: 22,
+        lineHeight: 23,
     },
-
-    instruction: {
-        color: '#777777',
-        fontSize: 13,
-        lineHeight: 20,
+    carregando: {
+        marginVertical: 20,
+    },
+    foto: {
+        width: '100%',
+        height: 240,
+        borderRadius: 8,
+        backgroundColor: '#EEEEEE',
         marginTop: 8,
+    },
+    semFoto: {
+        color: '#777777',
+        fontSize: 14,
+        marginTop: 8,
+    },
+    statusAtual: {
+        alignSelf: 'flex-start',
+        borderRadius: 20,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        marginTop: 4,
+    },
+    textoStatusAtual: {
+        color: '#FFFFFF',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    opcaoStatus: {
+        borderWidth: 1,
+        borderColor: '#1976D2',
+        borderRadius: 8,
+        padding: 12,
+        marginTop: 8,
+        backgroundColor: '#FFFFFF',
+    },
+    opcaoStatusSelecionada: {
+        backgroundColor: '#1976D2',
+    },
+    textoOpcaoStatus: {
+        color: '#1976D2',
+        textAlign: 'center',
+        fontSize: 15,
+    },
+    textoOpcaoSelecionada: {
+        color: '#FFFFFF',
+        fontWeight: 'bold',
+    },
+    botaoEditar: {
+        backgroundColor: '#2E7D32',
+        padding: 15,
+        borderRadius: 8,
         marginBottom: 12,
     },
-
-    statusOption: {
-        backgroundColor: '#F5F7FA',
-        borderWidth: 1,
-        borderColor: '#E0E4E8',
-        borderRadius: 10,
-        padding: 14,
-        marginTop: 9,
+    botaoExcluir: {
+        backgroundColor: '#C62828',
+        padding: 15,
+        borderRadius: 8,
     },
-
-    statusOptionSelected: {
-        backgroundColor: '#E3F2FD',
-        borderColor: '#1976D2',
-    },
-
-    statusOptionText: {
-        color: '#444444',
-        fontSize: 15,
-        fontWeight: '500',
-    },
-
-    statusOptionTextSelected: {
-        color: '#1565C0',
-        fontWeight: 'bold',
-    },
-
-    button: {
-        backgroundColor: '#1976D2',
-        marginHorizontal: 16,
-        marginTop: 8,
-        padding: 16,
-        borderRadius: 12,
-        alignItems: 'center',
-    },
-
-    buttonText: {
+    textoBotao: {
         color: '#FFFFFF',
         fontSize: 15,
         fontWeight: 'bold',
         textAlign: 'center',
     },
-
-    title: {
-        color: '#222222',
-        fontSize: 20,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        margin: 20,
+    botaoDesabilitado: {
+        opacity: 0.5,
     },
 });

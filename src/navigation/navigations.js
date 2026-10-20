@@ -8,7 +8,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
 import NewReportScreen from '../screens/NewReportScreen';
 import ReportDetailScreen from '../screens/ReportDetailScreen';
-
+import EditReportScreen from '../screens/EditReportScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -43,9 +43,15 @@ export default function AppNavigation() {
                     name="NewReport"
                     component={NewReportScreen}
                 />
+
                 <Stack.Screen
                     name="ReportDetail"
                     component={ReportDetailScreen}
+                />
+
+                <Stack.Screen
+                    name="EditReport"
+                    component={EditReportScreen}
                 />
             </Stack.Navigator>
         </NavigationContainer>
