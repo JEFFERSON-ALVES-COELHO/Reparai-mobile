@@ -19,12 +19,15 @@ export default function HomeScreen({ navigation, route }) {
     const [mostrarInfo, setMostrarInfo] = useState(false);
     const [carregando, setCarregando] = useState(true);
 
+    const nomeUsuario = route.params?.user?.name || 'Usuário';
+
     // Carrega as ocorrências salvas no SQLite.
     const carregarOcorrencias = useCallback(() => {
         setCarregando(true);
 
         try {
-            const ocorrencias = listarOcorrencias();
+            const usuarioId = route.params?.user?.id;
+            const ocorrencias = listarOcorrencias(usuarioId);
             setListaOcorrencias(ocorrencias);
         } catch (erro) {
             console.error('Erro ao carregar ocorrências:', erro);
@@ -56,13 +59,16 @@ export default function HomeScreen({ navigation, route }) {
 
     // Abre o formulário de nova ocorrência.
     function adicionarOcorrencia() {
-        navigation.navigate('NewReport');
+        navigation.navigate('NewReport', {
+            user: route.params?.user,
+        });
     }
 
     // Abre os detalhes da ocorrência selecionada.
     function abrirDetalhes(ocorrencia) {
         navigation.navigate('ReportDetail', {
             ocorrencia,
+            user: route.params?.user,
         });
     }
 
@@ -102,6 +108,11 @@ export default function HomeScreen({ navigation, route }) {
         >
             {/* CABEÇALHO */}
             <View style={styles.header}>
+                {/* SAUDAÇÃO PERSONALIZADA */}
+                <Text style={styles.greeting}>
+                    Olá, {nomeUsuario}! 👋
+                </Text>
+
                 <View style={styles.headerTop}>
                     <View style={styles.headerTextContainer}>
                         <Text style={styles.title}>Reparai</Text>
@@ -126,7 +137,7 @@ export default function HomeScreen({ navigation, route }) {
             {/* BOAS-VINDAS */}
             <View style={styles.welcomeCard}>
                 <Text style={styles.welcomeTitle}>
-                    Olá! 👋
+                    Bem-vindo ao Reparai!
                 </Text>
 
                 <Text style={styles.welcomeText}>
@@ -225,7 +236,6 @@ export default function HomeScreen({ navigation, route }) {
                                 📍 {item.endereco}
                             </Text>
 
-
                             <View
                                 style={[
                                     styles.statusBadge,
@@ -259,7 +269,6 @@ export default function HomeScreen({ navigation, route }) {
                                     Status: {item.status || 'Enviada'}
                                 </Text>
                             </View>
-
 
                             <Text style={styles.detailsHint}>
                                 Toque para ver os detalhes →
@@ -327,6 +336,14 @@ const styles = StyleSheet.create({
         paddingBottom: 25,
     },
 
+    greeting: {
+        color: '#FFFFFF',
+        fontSize: 18,
+        fontWeight: '600',
+        marginBottom: 18,
+        textAlign: 'left',
+    },
+
     headerTop: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -376,7 +393,7 @@ const styles = StyleSheet.create({
     welcomeTitle: {
         fontSize: 22,
         fontWeight: 'bold',
-        color: '#222222',
+        color: '#1976D2',
     },
 
     welcomeText: {
@@ -498,7 +515,6 @@ const styles = StyleSheet.create({
         marginTop: 10,
     },
 
-
     statusBadge: {
         alignSelf: 'flex-start',
         paddingHorizontal: 12,
@@ -511,7 +527,6 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '700',
     },
-
 
     detailsHint: {
         color: '#1976D2',

@@ -30,13 +30,17 @@ const categorias = [
     'Outros',
 ];
 
-export default function NewReportScreen({ navigation }) {
+export default function NewReportScreen({ navigation, route }) {
     const [categoria, setCategoria] = useState('');
     const [titulo, setTitulo] = useState('');
     const [descricao, setDescricao] = useState('');
     const [endereco, setEndereco] = useState('');
     const [foto, setFoto] = useState(null);
     const [salvando, setSalvando] = useState(false);
+
+    // Recupera o usuário que está conectado.
+    const usuario = route?.params?.user;
+    const usuarioId = usuario?.id;
 
     async function tirarFoto() {
         try {
@@ -51,12 +55,11 @@ export default function NewReportScreen({ navigation }) {
                 return;
             }
 
-            const resultado =
-                await ImagePicker.launchCameraAsync({
-                    mediaTypes: ['images'],
-                    allowsEditing: true,
-                    quality: 0.7,
-                });
+            const resultado = await ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                quality: 0.7,
+            });
 
             if (
                 !resultado.canceled &&
@@ -117,6 +120,19 @@ export default function NewReportScreen({ navigation }) {
             return;
         }
 
+        if (
+            usuarioId === undefined ||
+            usuarioId === null ||
+            !Number.isInteger(Number(usuarioId)) ||
+            Number(usuarioId) <= 0
+        ) {
+            Alert.alert(
+                'Sessão não identificada',
+                'Não foi possível identificar o usuário. Volte para a tela de login e entre novamente.'
+            );
+            return;
+        }
+
         const novaOcorrencia = {
             id: Date.now().toString(),
             categoria,
@@ -125,6 +141,7 @@ export default function NewReportScreen({ navigation }) {
             endereco: endereco.trim(),
             status: 'Enviada',
             data: new Date().toISOString(),
+            user_id: Number(usuarioId),
         };
 
         setSalvando(true);
@@ -132,17 +149,13 @@ export default function NewReportScreen({ navigation }) {
         let fotoSalva = false;
 
         try {
-            // 1. Salva a foto na pasta permanente do aplicativo.
+            // 1. Salva a foto, caso tenha sido selecionada.
             if (foto) {
-                await salvarFoto(
-                    foto,
-                    novaOcorrencia.id
-                );
-
+                await salvarFoto(foto, novaOcorrencia.id);
                 fotoSalva = true;
             }
 
-            // 2. Mantém o salvamento original no SQLite.
+            // 2. Salva a ocorrência vinculada ao usuário.
             salvarOcorrencia(novaOcorrencia);
 
             Alert.alert(
@@ -155,6 +168,7 @@ export default function NewReportScreen({ navigation }) {
                         text: 'OK',
                         onPress: () => {
                             navigation.navigate('Home', {
+                                user: usuario,
                                 novaOcorrencia,
                             });
                         },
@@ -168,7 +182,8 @@ export default function NewReportScreen({ navigation }) {
                 erro
             );
 
-            // Limpa a foto caso o salvamento da ocorrência falhe.
+            // Se a ocorrência falhar, tenta remover a foto
+            // que já havia sido salva.
             if (fotoSalva) {
                 try {
                     await excluirFoto(novaOcorrencia.id);
@@ -182,6 +197,7 @@ export default function NewReportScreen({ navigation }) {
 
             Alert.alert(
                 'Erro ao registrar',
+                erro?.message ||
                 'Não foi possível salvar a ocorrência. Tente novamente.'
             );
         } finally {

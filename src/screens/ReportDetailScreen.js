@@ -38,6 +38,8 @@ const CORES_STATUS = {
 
 export default function ReportDetailScreen({ navigation, route }) {
     const ocorrencia = route.params?.ocorrencia;
+    const usuario = route.params?.user;
+    const usuarioId = usuario?.id;
 
     const [statusAtual, setStatusAtual] = useState(
         ocorrencia?.status || 'Enviada'
@@ -58,12 +60,17 @@ export default function ReportDetailScreen({ navigation, route }) {
 
         async function carregarFoto() {
             setCarregandoFoto(true);
+            setFotoUri(null);
 
             try {
-                const caminho = await obterFoto(ocorrencia?.id);
+                if (!ocorrencia?.id) {
+                    return;
+                }
+
+                const caminho = await obterFoto(ocorrencia.id);
 
                 if (ativo) {
-                    setFotoUri(caminho);
+                    setFotoUri(caminho || null);
                 }
             } catch (erro) {
                 console.error('Erro ao carregar foto:', erro);
@@ -85,32 +92,60 @@ export default function ReportDetailScreen({ navigation, route }) {
         };
     }, [ocorrencia?.id]);
 
+    function usuarioValido() {
+        return (
+            usuarioId !== undefined &&
+            usuarioId !== null &&
+            Number.isInteger(Number(usuarioId)) &&
+            Number(usuarioId) > 0
+        );
+    }
+
     function voltar() {
-        if (voltando || !navigation.canGoBack()) {
+        if (voltando || excluindo || atualizandoStatus) {
             return;
         }
 
-        setVoltando(true);
-        navigation.goBack();
+        if (navigation.canGoBack()) {
+            setVoltando(true);
+            navigation.goBack();
+            return;
+        }
+
+        navigation.navigate('Home', { user: usuario });
     }
 
     function alterarStatus(novoStatus) {
-        if (!ocorrencia?.id || atualizandoStatus || excluindo) {
+        if (
+            !ocorrencia?.id ||
+            atualizandoStatus ||
+            excluindo ||
+            statusAtual === novoStatus
+        ) {
             return;
         }
 
-        try {
-            setAtualizandoStatus(true);
+        if (!usuarioValido()) {
+            Alert.alert(
+                'Sessão não identificada',
+                'Entre novamente para atualizar esta ocorrência.'
+            );
+            return;
+        }
 
+        setAtualizandoStatus(true);
+
+        try {
             const alteracoes = atualizarStatus(
                 ocorrencia.id,
-                novoStatus
+                novoStatus,
+                Number(usuarioId)
             );
 
             if (alteracoes === 0) {
                 Alert.alert(
                     'Atenção',
-                    'Não foi possível atualizar o status da ocorrência.'
+                    'Não foi possível atualizar o status. Verifique se a ocorrência pertence ao usuário conectado.'
                 );
                 return;
             }
@@ -126,6 +161,7 @@ export default function ReportDetailScreen({ navigation, route }) {
 
             Alert.alert(
                 'Erro',
+                erro?.message ||
                 'Não foi possível atualizar o status.'
             );
         } finally {
@@ -134,7 +170,19 @@ export default function ReportDetailScreen({ navigation, route }) {
     }
 
     function abrirEdicao() {
-        if (!ocorrencia?.id || excluindo) {
+        if (
+            !ocorrencia?.id ||
+            excluindo ||
+            atualizandoStatus
+        ) {
+            return;
+        }
+
+        if (!usuarioValido()) {
+            Alert.alert(
+                'Sessão não identificada',
+                'Entre novamente para editar esta ocorrência.'
+            );
             return;
         }
 
@@ -143,11 +191,24 @@ export default function ReportDetailScreen({ navigation, route }) {
                 ...ocorrencia,
                 status: statusAtual,
             },
+            user: usuario,
         });
     }
 
     function solicitarExclusao() {
-        if (!ocorrencia?.id || excluindo) {
+        if (
+            !ocorrencia?.id ||
+            excluindo ||
+            atualizandoStatus
+        ) {
+            return;
+        }
+
+        if (!usuarioValido()) {
+            Alert.alert(
+                'Sessão não identificada',
+                'Entre novamente para excluir esta ocorrência.'
+            );
             return;
         }
 
@@ -169,19 +230,22 @@ export default function ReportDetailScreen({ navigation, route }) {
     }
 
     async function confirmarExclusao() {
-        if (excluindo) {
+        if (excluindo || atualizandoStatus) {
             return;
         }
 
         setExcluindo(true);
 
         try {
-            const removidas = excluirOcorrencia(ocorrencia.id);
+            const removidas = excluirOcorrencia(
+                ocorrencia.id,
+                Number(usuarioId)
+            );
 
             if (removidas === 0) {
                 Alert.alert(
                     'Atenção',
-                    'A ocorrência não foi encontrada ou já foi excluída.'
+                    'A ocorrência não foi encontrada ou não pertence ao usuário conectado.'
                 );
                 return;
             }
@@ -207,15 +271,25 @@ export default function ReportDetailScreen({ navigation, route }) {
                 [
                     {
                         text: 'OK',
-                        onPress: () => navigation.goBack(),
+                        onPress: () => {
+                            if (navigation.canGoBack()) {
+                                navigation.goBack();
+                            } else {
+                                navigation.navigate('Home', {
+                                    user: usuario,
+                                });
+                            }
+                        },
                     },
-                ]
+                ],
+                { cancelable: false }
             );
         } catch (erro) {
             console.error('Erro ao excluir ocorrência:', erro);
 
             Alert.alert(
                 'Erro',
+                erro?.message ||
                 'Não foi possível excluir a ocorrência. Tente novamente.'
             );
         } finally {
@@ -234,6 +308,7 @@ export default function ReportDetailScreen({ navigation, route }) {
                     style={styles.botaoVoltar}
                     activeOpacity={0.7}
                     onPress={voltar}
+                    disabled={voltando}
                 >
                     <Text style={styles.textoBotaoVoltar}>
                         ← Voltar
@@ -257,7 +332,11 @@ export default function ReportDetailScreen({ navigation, route }) {
                 style={styles.botaoVoltar}
                 activeOpacity={0.7}
                 onPress={voltar}
-                disabled={voltando}
+                disabled={
+                    voltando ||
+                    excluindo ||
+                    atualizandoStatus
+                }
             >
                 <Text style={styles.textoBotaoVoltar}>
                     ← Voltar para ocorrências
@@ -343,13 +422,14 @@ export default function ReportDetailScreen({ navigation, route }) {
                             styles.opcaoStatus,
                             statusAtual === status &&
                             styles.opcaoStatusSelecionada,
-                            atualizandoStatus &&
+                            (atualizandoStatus || excluindo) &&
                             styles.botaoDesabilitado,
                         ]}
                         onPress={() => alterarStatus(status)}
                         disabled={
                             atualizandoStatus ||
                             excluindo ||
+                            voltando ||
                             statusAtual === status
                         }
                     >
@@ -368,10 +448,18 @@ export default function ReportDetailScreen({ navigation, route }) {
             </View>
 
             <TouchableOpacity
-                style={styles.botaoEditar}
+                style={[
+                    styles.botaoEditar,
+                    (excluindo || atualizandoStatus || voltando) &&
+                    styles.botaoDesabilitado,
+                ]}
                 activeOpacity={0.7}
                 onPress={abrirEdicao}
-                disabled={excluindo}
+                disabled={
+                    excluindo ||
+                    atualizandoStatus ||
+                    voltando
+                }
             >
                 <Text style={styles.textoBotao}>
                     ✎ Editar ocorrência
@@ -381,11 +469,16 @@ export default function ReportDetailScreen({ navigation, route }) {
             <TouchableOpacity
                 style={[
                     styles.botaoExcluir,
-                    excluindo && styles.botaoDesabilitado,
+                    (excluindo || atualizandoStatus || voltando) &&
+                    styles.botaoDesabilitado,
                 ]}
                 activeOpacity={0.7}
                 onPress={solicitarExclusao}
-                disabled={excluindo}
+                disabled={
+                    excluindo ||
+                    atualizandoStatus ||
+                    voltando
+                }
             >
                 {excluindo ? (
                     <ActivityIndicator color="#FFFFFF" />

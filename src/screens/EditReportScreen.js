@@ -27,6 +27,8 @@ const CATEGORIAS = [
 
 export default function EditReportScreen({ navigation, route }) {
     const ocorrencia = route.params?.ocorrencia;
+    const usuario = route.params?.user;
+    const usuarioId = usuario?.id;
 
     const [categoria, setCategoria] = useState(
         ocorrencia?.categoria ?? ''
@@ -50,14 +52,17 @@ export default function EditReportScreen({ navigation, route }) {
         setEndereco(ocorrencia?.endereco ?? '');
     }, [ocorrencia]);
 
-    // Volta diretamente para a Home.
+    // Retorna à Home preservando o usuário conectado.
     function voltar() {
         if (voltando || salvando) {
             return;
         }
 
         setVoltando(true);
-        navigation.navigate('Home');
+
+        navigation.navigate('Home', {
+            user: usuario,
+        });
     }
 
     function salvarAlteracoes() {
@@ -69,6 +74,19 @@ export default function EditReportScreen({ navigation, route }) {
             Alert.alert(
                 'Erro',
                 'Não foi possível identificar a ocorrência.'
+            );
+            return;
+        }
+
+        if (
+            usuarioId === undefined ||
+            usuarioId === null ||
+            !Number.isInteger(Number(usuarioId)) ||
+            Number(usuarioId) <= 0
+        ) {
+            Alert.alert(
+                'Sessão não identificada',
+                'Não foi possível identificar o usuário. Volte para o login e entre novamente.'
             );
             return;
         }
@@ -95,25 +113,40 @@ export default function EditReportScreen({ navigation, route }) {
                 titulo: titulo.trim(),
                 descricao: descricao.trim(),
                 endereco: endereco.trim(),
+                user_id: Number(usuarioId),
             };
 
+            // O ID do usuário garante que a atualização
+            // seja limitada às ocorrências desse usuário.
             const alteracoes = atualizarOcorrencia(
-                ocorrenciaAtualizada
+                ocorrenciaAtualizada,
+                Number(usuarioId)
             );
 
             if (alteracoes === 0) {
                 Alert.alert(
                     'Atenção',
-                    'Nenhuma alteração foi salva. Verifique se a ocorrência ainda existe.'
+                    'Nenhuma alteração foi salva. Verifique se a ocorrência pertence ao usuário conectado e ainda existe.'
                 );
                 return;
             }
 
-            // Mantém o comportamento atual após salvar:
-            // retorna aos detalhes com os dados atualizados.
-            navigation.navigate('ReportDetail', {
-                ocorrencia: ocorrenciaAtualizada,
-            });
+            Alert.alert(
+                'Sucesso',
+                'Ocorrência atualizada com sucesso!',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            navigation.navigate('ReportDetail', {
+                                ocorrencia: ocorrenciaAtualizada,
+                                user: usuario,
+                            });
+                        },
+                    },
+                ],
+                { cancelable: false }
+            );
         } catch (erro) {
             console.error(
                 'Erro ao atualizar ocorrência:',
@@ -122,6 +155,7 @@ export default function EditReportScreen({ navigation, route }) {
 
             Alert.alert(
                 'Erro',
+                erro?.message ||
                 'Não foi possível salvar as alterações. Tente novamente.'
             );
         } finally {
@@ -193,7 +227,7 @@ export default function EditReportScreen({ navigation, route }) {
                                 styles.categoria,
                                 categoria === item &&
                                 styles.categoriaSelecionada,
-                                salvando &&
+                                (salvando || voltando) &&
                                 styles.botaoDesabilitado,
                             ]}
                             onPress={() => setCategoria(item)}
@@ -239,6 +273,7 @@ export default function EditReportScreen({ navigation, route }) {
                     placeholderTextColor="#888888"
                     multiline
                     textAlignVertical="top"
+                    maxLength={1000}
                     editable={!salvando && !voltando}
                 />
 
@@ -250,6 +285,7 @@ export default function EditReportScreen({ navigation, route }) {
                     onChangeText={setEndereco}
                     placeholder="Informe o endereço"
                     placeholderTextColor="#888888"
+                    maxLength={200}
                     editable={!salvando && !voltando}
                     returnKeyType="done"
                 />

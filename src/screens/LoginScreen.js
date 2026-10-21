@@ -15,8 +15,10 @@ import PrimaryButton from '../components/PrimaryButton';
 import { User } from '../models/User';
 import { colors } from '../styles/colors';
 
-export default function LoginScreen({ navigation }) {
-    const [email, setEmail] = useState('');
+export default function LoginScreen({ navigation, route }) {
+    const [email, setEmail] = useState(
+        route.params?.registeredEmail ?? ''
+    );
     const [password, setPassword] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
 
