@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 
 import {
@@ -116,6 +115,41 @@ export default function NewReportScreen({ navigation, route }) {
             return;
         }
 
+        const tituloLimpo = titulo.trim();
+        const descricaoLimpa = descricao.trim();
+
+        if (tituloLimpo.length < 10) {
+            Alert.alert(
+                'Título muito curto',
+                'O título deve ter no mínimo 10 caracteres.'
+            );
+            return;
+        }
+
+        if (tituloLimpo.length > 50) {
+            Alert.alert(
+                'Título muito longo',
+                'O título deve ter no máximo 50 caracteres.'
+            );
+            return;
+        }
+
+        if (descricaoLimpa.length < 10) {
+            Alert.alert(
+                'Descrição muito curta',
+                'A descrição deve ter no mínimo 10 caracteres.'
+            );
+            return;
+        }
+
+        if (descricaoLimpa.length > 1000) {
+            Alert.alert(
+                'Descrição muito longa',
+                'A descrição deve ter no máximo 1.000 caracteres.'
+            );
+            return;
+        }
+
         if (salvando) {
             return;
         }
@@ -136,8 +170,8 @@ export default function NewReportScreen({ navigation, route }) {
         const novaOcorrencia = {
             id: Date.now().toString(),
             categoria,
-            titulo: titulo.trim(),
-            descricao: descricao.trim(),
+            titulo: tituloLimpo,
+            descricao: descricaoLimpa,
             endereco: endereco.trim(),
             status: 'Enviada',
             data: new Date().toISOString(),
@@ -274,9 +308,15 @@ export default function NewReportScreen({ navigation, route }) {
                     placeholder="Ex.: Buraco na rua"
                     value={titulo}
                     onChangeText={setTitulo}
-                    maxLength={100}
+                    maxLength={50}
                     editable={!salvando}
                 />
+                <Text style={[
+                    styles.counter,
+                    titulo.trim().length < 10 && styles.counterWarning
+                ]}>
+                    {titulo.trim().length}/50 caracteres (mínimo 10)
+                </Text>
 
                 <Text style={styles.label}>
                     Descrição *
@@ -293,6 +333,12 @@ export default function NewReportScreen({ navigation, route }) {
                     maxLength={1000}
                     editable={!salvando}
                 />
+                <Text style={[
+                    styles.counter,
+                    descricao.trim().length < 10 && styles.counterWarning
+                ]}>
+                    {descricao.trim().length}/1.000 caracteres (mínimo 10)
+                </Text>
 
                 <Text style={styles.label}>
                     Endereço do problema *
@@ -474,6 +520,15 @@ const styles = StyleSheet.create({
     },
     textArea: {
         minHeight: 120,
+    },
+    counter: {
+        color: '#777777',
+        fontSize: 12,
+        textAlign: 'right',
+        marginTop: 5,
+    },
+    counterWarning: {
+        color: '#D32F2F',
     },
     photoButtons: {
         flexDirection: 'row',

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import {
     View,
     Text,
+    TextInput,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
@@ -18,6 +19,27 @@ export default function HomeScreen({ navigation, route }) {
     const [listaOcorrencias, setListaOcorrencias] = useState([]);
     const [mostrarInfo, setMostrarInfo] = useState(false);
     const [carregando, setCarregando] = useState(true);
+    const [busca, setBusca] = useState('');
+    const [filtroStatus, setFiltroStatus] = useState('Todos');
+    const [filtroCategoria, setFiltroCategoria] = useState('Todas');
+
+    const statusDisponiveis = [
+        'Todos',
+        'Enviada',
+        'Em análise',
+        'Em execução',
+        'Resolvida',
+    ];
+
+    const categoriasDisponiveis = [
+        'Todas',
+        'Buraco na via',
+        'Iluminação pública',
+        'Lixo irregular',
+        'Sinalização',
+        'Calçada',
+        'Outros',
+    ];
 
     const nomeUsuario = route.params?.user?.name || 'Usuário';
 
@@ -39,7 +61,7 @@ export default function HomeScreen({ navigation, route }) {
         } finally {
             setCarregando(false);
         }
-    }, []);
+    }, [route.params?.user?.id]);
 
     // Atualiza a lista sempre que a Home recebe foco.
     useFocusEffect(
@@ -98,8 +120,41 @@ export default function HomeScreen({ navigation, route }) {
 
     // Calcula o total de ocorrências resolvidas.
     const ocorrenciasResolvidas = listaOcorrencias.filter(
-        (item) => item.status === 'Resolvida'
+        (item) => (item.status || 'Enviada') === 'Resolvida'
     ).length;
+
+    // Remove acentos e ignora maiúsculas/minúsculas na pesquisa.
+    function normalizarTexto(valor) {
+        return String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+    }
+
+    // Aplica pesquisa, status e categoria sem alterar a lista original.
+    const ocorrenciasFiltradas = listaOcorrencias.filter((item) => {
+        const termoBusca = normalizarTexto(busca);
+
+        const correspondeBusca =
+            normalizarTexto(item.titulo).includes(termoBusca) ||
+            normalizarTexto(item.endereco).includes(termoBusca);
+
+        const correspondeStatus =
+            filtroStatus === 'Todos' ||
+            (item.status || 'Enviada') === filtroStatus;
+
+        const correspondeCategoria =
+            filtroCategoria === 'Todas' ||
+            item.categoria === filtroCategoria;
+
+        return correspondeBusca && correspondeStatus && correspondeCategoria;
+    });
+
+    function limparFiltros() {
+        setBusca('');
+        setFiltroStatus('Todos');
+        setFiltroCategoria('Todas');
+    }
 
     return (
         <ScrollView
@@ -190,6 +245,84 @@ export default function HomeScreen({ navigation, route }) {
                     Minhas ocorrências
                 </Text>
 
+                {/* PESQUISA */}
+                <TextInput
+                    style={styles.searchInput}
+                    value={busca}
+                    onChangeText={setBusca}
+                    placeholder="Pesquisar por título ou endereço..."
+                    placeholderTextColor="#888888"
+                    returnKeyType="search"
+                    accessibilityLabel="Pesquisar ocorrências por título ou endereço"
+                />
+
+                {/* FILTRO POR STATUS */}
+                <Text style={styles.filterLabel}>Filtrar por status</Text>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.filtersContainer}
+                >
+                    {statusDisponiveis.map((status) => (
+                        <TouchableOpacity
+                            key={status}
+                            style={[
+                                styles.filterChip,
+                                filtroStatus === status && styles.filterChipActive,
+                            ]}
+                            onPress={() => setFiltroStatus(status)}
+                            activeOpacity={0.8}
+                        >
+                            <Text
+                                style={[
+                                    styles.filterChipText,
+                                    filtroStatus === status && styles.filterChipTextActive,
+                                ]}
+                            >
+                                {status}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+
+                {/* FILTRO POR CATEGORIA */}
+                <Text style={styles.filterLabel}>Filtrar por categoria</Text>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.filtersContainer}
+                >
+                    {categoriasDisponiveis.map((categoria) => (
+                        <TouchableOpacity
+                            key={categoria}
+                            style={[
+                                styles.filterChip,
+                                filtroCategoria === categoria && styles.filterChipActive,
+                            ]}
+                            onPress={() => setFiltroCategoria(categoria)}
+                            activeOpacity={0.8}
+                        >
+                            <Text
+                                style={[
+                                    styles.filterChipText,
+                                    filtroCategoria === categoria && styles.filterChipTextActive,
+                                ]}
+                            >
+                                {categoria}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+
+                {!carregando && listaOcorrencias.length > 0 && (
+                    <Text style={styles.resultsCount}>
+                        {ocorrenciasFiltradas.length}{' '}
+                        {ocorrenciasFiltradas.length === 1
+                            ? 'ocorrência encontrada'
+                            : 'ocorrências encontradas'}
+                    </Text>
+                )}
+
                 {carregando ? (
                     <View style={styles.emptyCard}>
                         <ActivityIndicator
@@ -212,8 +345,26 @@ export default function HomeScreen({ navigation, route }) {
                             depois que você realizar um registro.
                         </Text>
                     </View>
+                ) : ocorrenciasFiltradas.length === 0 ? (
+                    <View style={styles.emptyCard}>
+                        <Text style={styles.emptyTitle}>
+                            Nenhuma ocorrência encontrada
+                        </Text>
+                        <Text style={styles.emptyText}>
+                            Tente alterar a pesquisa ou os filtros selecionados.
+                        </Text>
+                        <TouchableOpacity
+                            style={styles.clearFiltersButton}
+                            onPress={limparFiltros}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.clearFiltersButtonText}>
+                                Limpar pesquisa e filtros
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
                 ) : (
-                    listaOcorrencias.map((item) => (
+                    ocorrenciasFiltradas.map((item) => (
                         <TouchableOpacity
                             key={item.id}
                             style={styles.reportCard}
@@ -450,6 +601,78 @@ const styles = StyleSheet.create({
     buttonText: {
         color: '#FFFFFF',
         fontSize: 16,
+        fontWeight: 'bold',
+    },
+
+    searchInput: {
+        backgroundColor: '#FFFFFF',
+        marginHorizontal: 20,
+        marginTop: 4,
+        marginBottom: 16,
+        paddingHorizontal: 15,
+        paddingVertical: 13,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#D9E1EA',
+        color: '#222222',
+        fontSize: 15,
+    },
+
+    filterLabel: {
+        marginHorizontal: 20,
+        marginBottom: 8,
+        color: '#444444',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+
+    filtersContainer: {
+        paddingHorizontal: 20,
+        paddingBottom: 14,
+        gap: 8,
+    },
+
+    filterChip: {
+        paddingHorizontal: 13,
+        paddingVertical: 9,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#1976D2',
+        backgroundColor: '#FFFFFF',
+    },
+
+    filterChipActive: {
+        backgroundColor: '#1976D2',
+    },
+
+    filterChipText: {
+        color: '#1976D2',
+        fontSize: 13,
+        fontWeight: '600',
+    },
+
+    filterChipTextActive: {
+        color: '#FFFFFF',
+    },
+
+    resultsCount: {
+        marginHorizontal: 20,
+        marginBottom: 12,
+        color: '#666666',
+        fontSize: 13,
+    },
+
+    clearFiltersButton: {
+        marginTop: 14,
+        paddingHorizontal: 16,
+        paddingVertical: 11,
+        backgroundColor: '#1976D2',
+        borderRadius: 9,
+    },
+
+    clearFiltersButtonText: {
+        color: '#FFFFFF',
+        fontSize: 14,
         fontWeight: 'bold',
     },
 

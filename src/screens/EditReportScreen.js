@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 
 import {
@@ -104,14 +103,49 @@ export default function EditReportScreen({ navigation, route }) {
             return;
         }
 
+        const tituloLimpo = titulo.trim();
+        const descricaoLimpa = descricao.trim();
+
+        if (tituloLimpo.length < 10) {
+            Alert.alert(
+                'Título muito curto',
+                'O título deve ter no mínimo 10 caracteres.'
+            );
+            return;
+        }
+
+        if (tituloLimpo.length > 50) {
+            Alert.alert(
+                'Título muito longo',
+                'O título deve ter no máximo 50 caracteres.'
+            );
+            return;
+        }
+
+        if (descricaoLimpa.length < 10) {
+            Alert.alert(
+                'Descrição muito curta',
+                'A descrição deve ter no mínimo 10 caracteres.'
+            );
+            return;
+        }
+
+        if (descricaoLimpa.length > 1000) {
+            Alert.alert(
+                'Descrição muito longa',
+                'A descrição deve ter no máximo 1.000 caracteres.'
+            );
+            return;
+        }
+
         setSalvando(true);
 
         try {
             const ocorrenciaAtualizada = {
                 ...ocorrencia,
                 categoria,
-                titulo: titulo.trim(),
-                descricao: descricao.trim(),
+                titulo: tituloLimpo,
+                descricao: descricaoLimpa,
                 endereco: endereco.trim(),
                 user_id: Number(usuarioId),
             };
@@ -255,10 +289,16 @@ export default function EditReportScreen({ navigation, route }) {
                     onChangeText={setTitulo}
                     placeholder="Digite o título"
                     placeholderTextColor="#888888"
-                    maxLength={100}
+                    maxLength={50}
                     editable={!salvando && !voltando}
                     returnKeyType="next"
                 />
+                <Text style={[
+                    styles.counter,
+                    titulo.trim().length < 10 && styles.counterWarning
+                ]}>
+                    {titulo.trim().length}/50 caracteres (mínimo 10)
+                </Text>
 
                 <Text style={styles.label}>Descrição</Text>
 
@@ -276,6 +316,12 @@ export default function EditReportScreen({ navigation, route }) {
                     maxLength={1000}
                     editable={!salvando && !voltando}
                 />
+                <Text style={[
+                    styles.counter,
+                    descricao.trim().length < 10 && styles.counterWarning
+                ]}>
+                    {descricao.trim().length}/1.000 caracteres (mínimo 10)
+                </Text>
 
                 <Text style={styles.label}>Endereço</Text>
 
@@ -401,6 +447,15 @@ const styles = StyleSheet.create({
     },
     inputDescricao: {
         minHeight: 120,
+    },
+    counter: {
+        color: '#777777',
+        fontSize: 12,
+        textAlign: 'right',
+        marginTop: 5,
+    },
+    counterWarning: {
+        color: '#D32F2F',
     },
     botaoSalvar: {
         backgroundColor: '#2E7D32',
